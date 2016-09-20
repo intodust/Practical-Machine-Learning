@@ -1,0 +1,140 @@
+---
+title: "Prediction Assignment: Practical Machine Learning; Write-up"
+author: "Deepak Raja"
+date: "19 September 2016"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The goal of this project is to predict the manner in which the participants did the exercise. This is the classe variable of the training set, which classifies the correct and incorrect outcomes into A, B, C, D, and E categories.(five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E)).
+
+This report describes how the prediction model for the project was built, its cross validation, expected out of sample error calculation, and the choices made. It was used successfully to accurately predict all 20 different test cases on the Quiz.
+
+This document is the write-up submission for the course Practical Machine Learning, This 4-week course was offered on Coursera, and is part of Johns Hopkins Data Science Specialization.
+
+## Data Description and cleaning
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source:
+http://groupware.les.inf.puc-rio.br/har 
+
+We load the data in R while taking care of NA strings:
+
+```{r datacleaning}
+
+library(caret)
+training <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing  <- read.csv("pml-testing.csv",  na.strings = c("NA", "#DIV/0!", ""))
+
+# having a look at the structure and of data
+
+dim(training)
+str(training) # shows it has many variables with NAs , first 6 columns is just info, not records
+table(training$classe) #tables of classe variable
+prop.table(table(training$user_name, training$classe), 1) #proportion of classe varible in each user name
+
+# Data Cleaning
+training <- training[, 7:160]# removes first 6 columns 
+testing  <- testing[, 7:160]
+
+is_data  <- apply(!is.na(training), 2, sum) == 19622  # removing columns which have even 1 NA
+training <- training[, is_data]
+testing  <- testing[, is_data]
+
+#now we have relevant 54 variables in both training and testing dataset
+
+```
+
+### Modeling 
+
+We partition the training dataset for cross validation purpose. in 65:35 proportion
+
+```{r partition}
+
+set.seed(2125)
+inTrain <- createDataPartition(y=training$classe, p=0.65, list=FALSE)
+train1  <- training[inTrain,]
+train2  <- training[-inTrain,]
+dim(train1)
+dim(train2)
+```
+We check for Zero Variance predictors in the training data set 
+
+```{r}
+length(nearZeroVar(train1)) 
+```
+There are no neear zero predictors, therefore we need not make any further changes to testing varaibles.
+
+### Random Forest Model
+
+To find out the most relevant variables among 53 variables for prediction, we will use random forest (after trying rpart and tree, which gave very low accuracy)
+```{r randomForest}
+library(randomForest)
+set.seed(2125)
+fitModel <- randomForest(classe~., data=train1, importance=TRUE, ntree=100)
+varImpPlot(fitModel)
+
+```
+
+
+We can see in the plot which variables are most important predictors, lets find out the OOB sample rate of the model
+
+```{r oos}
+fitModel
+
+```
+
+Since the error rate is .37% for the sample, let us find out out of sample error rate by using the model on cross validation data set.
+
+```{r accuracy}
+tree.pred=predict(fitModel,train2,type="class")
+predMatrix = with(train2,table(tree.pred,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix))
+```
+
+we get accuracy of 99.85% on cross validation data. which is very good  for us. out of sample error rate is .15%. 
+
+
+## Testing predictions 
+
+We predict on the testing data with our Model
+
+```{r predicting}
+predictions <- predict(fitModel, newdata=testing)
+testing$classe <- predictions
+
+```
+## submission
+
+we create a csv 
+```{r submission}
+submission <- data.frame(problem_id = testing$problem_id, classe = predictions)
+write.csv(submission, file = "Assignment-submission.csv", row.names = FALSE)
+
+```
+
+We create seperate text files to upload for each answer
+
+```{r quiz}
+answers <- testing$classe
+write_files <- function(x){
+  n <- length(x)
+  for(i in 1:n){
+    filename <- paste0("problem_",i,".txt")
+    write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+  }
+}
+write_files(answers)
+```
+
+
